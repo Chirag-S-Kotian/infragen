@@ -34,7 +34,7 @@ function AppContent() {
   const [selectedModel, setSelectedModel] = useState('deepseek');
   const [promptValue, setPromptValue] = useState('');
   const [cursorFollowerActive, setCursorFollowerActive] = useState(true);
-  const { isAuthenticated, isLoaded } = useAuthContext();
+  const { isAuthenticated, isLoaded, remainingMessages, maxMessages, hasReachedLimit, updateMessageCount, getAuthToken, limitResetTime } = useAuthContext();
 
   const navigationLinks = [
     { name: 'Home', href: '/' },
@@ -90,10 +90,16 @@ function AppContent() {
     setSuccess(false);
 
     try {
+      const token = await getAuthToken();
+      if (!token) {
+        throw new Error('Authentication token not available');
+      }
+
       const response = await fetch('http://localhost:8000/generate-infra/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ 
           prompt: promptValue, 
@@ -101,12 +107,24 @@ function AppContent() {
         }),
       });
 
+      if (response.status === 429) {
+        const errorData = await response.json();
+        setError(errorData.detail || 'You have reached your message limit. Please try again later.');
+        return;
+      }
+
       if (!response.ok) {
         throw new Error('Failed to generate infrastructure code');
       }
 
       const data = await response.json();
       setOutput(data[selectedModel]);
+      
+      // Update remaining message count
+      if (data.remaining_messages !== undefined) {
+        updateMessageCount(data.remaining_messages);
+      }
+      
       setSuccess(true);
     } catch (err) {
       setError(err.message);
@@ -143,6 +161,26 @@ function AppContent() {
     URL.revokeObjectURL(url);
   };
 
+  // Format the reset time for display
+  const formatResetTime = () => {
+    if (!limitResetTime) return "tomorrow";
+    
+    const now = new Date();
+    const diffMs = limitResetTime - now;
+    
+    // If less than 0, the limit has reset
+    if (diffMs <= 0) return "soon";
+    
+    const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (diffHrs > 0) {
+      return `in about ${diffHrs} hour${diffHrs !== 1 ? 's' : ''}`;
+    } else {
+      return `in about ${diffMins} minute${diffMins !== 1 ? 's' : ''}`;
+    }
+  };
+
   // Infrastructure Generation Form Component - This separates the form for better authentication control
   const InfrastructureForm = () => {
     return (
@@ -152,6 +190,26 @@ function AppContent() {
         onMouseLeave={() => setCursorFollowerActive(true)}
       >
         <h2 className="form-title">Generate Infrastructure Code</h2>
+        {isAuthenticated && (
+          <div className="message-limit-counter">
+            <div className="message-limit-indicator">
+              <div className="message-limit-text">
+                {remainingMessages} of {maxMessages} messages remaining today
+              </div>
+              <div className="message-limit-bar">
+                <div 
+                  className="message-limit-progress" 
+                  style={{ width: `${(remainingMessages / maxMessages) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+            {hasReachedLimit && (
+              <div className="message-limit-warning">
+                You've reached your daily message limit. Limit resets {formatResetTime()}.
+              </div>
+            )}
+          </div>
+        )}
         <form onSubmit={handleGenerate} className="infra-form">
           <div className="form-group">
             <label htmlFor="prompt">
@@ -167,6 +225,7 @@ function AppContent() {
               onChange={(e) => setPromptValue(e.target.value)}
               maxLength={1000}
               required
+              disabled={hasReachedLimit}
             />
             <div className="input-footer">
               <div className="textarea-info">
@@ -224,12 +283,17 @@ function AppContent() {
           <button
             type="submit"
             className="submit-button"
-            disabled={loading}
+            disabled={loading || hasReachedLimit}
           >
             {loading ? (
               <>
                 <span className="button-spinner"></span>
                 Generating...
+              </>
+            ) : hasReachedLimit ? (
+              <>
+                <span className="button-icon">⚠️</span>
+                Limit Reached
               </>
             ) : (
               <>
