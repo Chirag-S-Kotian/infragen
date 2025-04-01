@@ -1,48 +1,69 @@
-import { useState, useEffect, useRef } from "react";
-import InfraForm from "./components/InfaForm";
-import "./App.css";
+import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { AuthProvider } from './contexts/AuthContext';
+import { useAuthContext } from './contexts/AuthContext';
+import { AuthButtons } from './components/auth/AuthButtons';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import Dashboard from './pages/Dashboard';
+import './App.css';
 
-const App = () => {
-  const [output, setOutput] = useState("");
+// Protected Route Component
+function ProtectedRoute({ children }) {
+  return (
+    <>
+      <SignedIn>{children}</SignedIn>
+      <SignedOut>
+        <RedirectToSignIn />
+      </SignedOut>
+    </>
+  );
+}
+
+// Main App Component
+function AppContent() {
+  const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [scrollPosition, setScrollPosition] = useState(0);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
   const [copySuccess, setCopySuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState(null);
-  const cursorRef = useRef(null);
-  const outputRef = useRef(null);
+  const [selectedModel, setSelectedModel] = useState('deepseek');
+  const [promptValue, setPromptValue] = useState('');
+  const [cursorFollowerActive, setCursorFollowerActive] = useState(true);
+  const { isAuthenticated, isLoaded } = useAuthContext();
 
-  // Define navigation links array to avoid duplication
-  const navLinks = [
-    { href: "#", text: "Home" },
-    { href: "#features", text: "Features" },
-    { href: "#infra-form", text: "Generate" },
-    { href: "#", text: "Docs" },
-    { href: "#", text: "Contact" }
+  const navigationLinks = [
+    { name: 'Home', href: '/' },
+    { name: 'Features', href: '#features' },
+    { name: 'Generate', href: '#generate' },
+    { name: 'Dashboard', href: '/dashboard' },
   ];
 
   useEffect(() => {
-    // Add a small delay to trigger the fade-in animation
-    const timer = setTimeout(() => {
-      setIsVisible(true);
-    }, 100);
-
-    // Handle scroll event for header
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50);
+      setScrollPosition(window.scrollY);
     };
 
-    // Handle mouse movement for cursor follower
     const handleMouseMove = (e) => {
-      if (cursorRef.current) {
-        cursorRef.current.style.left = `${e.clientX}px`;
-        cursorRef.current.style.top = `${e.clientY}px`;
-        
-        // Add a subtle opacity change based on movement speed
-        const speed = Math.sqrt(Math.pow(e.movementX, 2) + Math.pow(e.movementY, 2));
-        cursorRef.current.style.opacity = Math.min(0.5, 0.2 + speed * 0.05);
+      // Don't update cursor position when hovering over any input or form elements
+      const target = e.target;
+      const isInteractive = 
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.tagName === 'BUTTON' ||
+        target.closest('form') !== null ||
+        target.closest('.form-container') !== null;
+      
+      if (!isInteractive && cursorFollowerActive) {
+        // Throttle updates for better performance
+        requestAnimationFrame(() => {
+          setCursorPosition({ x: e.clientX, y: e.clientY });
+        });
       }
     };
 
@@ -50,278 +71,367 @@ const App = () => {
     window.addEventListener('mousemove', handleMouseMove);
 
     return () => {
-      clearTimeout(timer);
       window.removeEventListener('scroll', handleScroll);
       window.removeEventListener('mousemove', handleMouseMove);
     };
-  }, []);
+  }, [cursorFollowerActive]);
 
-  const handleGenerate = async (prompt, model) => {
+  const handleGenerate = async (e) => {
+    e.preventDefault();
+    
+    // Only allow authenticated users to generate code
+    if (!isAuthenticated) {
+      setError('Please sign in to generate infrastructure code.');
+      return;
+    }
+    
     setLoading(true);
-    setError(null);
-    setOutput("");
-    setCopySuccess(false);
+    setError('');
+    setSuccess(false);
 
     try {
-      const response = await fetch("http://localhost:8000/generate-infra/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, model }),
+      const response = await fetch('http://localhost:8000/generate-infra/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          prompt: promptValue, 
+          model: selectedModel 
+        }),
       });
 
       if (!response.ok) {
-        throw new Error(`Error: ${response.status} - ${response.statusText}`);
+        throw new Error('Failed to generate infrastructure code');
       }
 
       const data = await response.json();
-      setOutput(data[model] || "No output generated.");
-      
-      // Scroll to output
-      setTimeout(() => {
-        if (outputRef.current) {
-          outputRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 500);
-      
+      setOutput(data[selectedModel]);
+      setSuccess(true);
     } catch (err) {
-      console.error("API Call Failed:", err);
-      setError("Failed to generate infrastructure. Please try again.");
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
-  };
-  
-  const handleCopyCode = async () => {
-    if (!output) return;
-    
+  const copyToClipboard = async () => {
     try {
       await navigator.clipboard.writeText(output);
       setCopySuccess(true);
-      
-      // Reset copy success message after 2 seconds
-      setTimeout(() => {
-        setCopySuccess(false);
-      }, 2000);
+      setTimeout(() => setCopySuccess(false), 2000);
     } catch (err) {
-      console.error('Failed to copy text: ', err);
-      setError("Failed to copy text. Please try again.");
+      console.error('Failed to copy:', err);
     }
   };
 
-  // Function to handle download of generated code
-  const handleSaveFile = () => {
-    if (!output) return;
-    
-    try {
-      const blob = new Blob([output], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'infrastructure-code.tf';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      // Show temporary success message
-      setSuccessMessage("File saved successfully!");
-      setTimeout(() => {
-        setSuccessMessage(null);
-      }, 2000);
-    } catch (err) {
-      console.error('Failed to save file: ', err);
-      setError("Failed to save file. Please try again.");
-    }
+  const resetForm = () => {
+    setOutput('');
+    setSuccess(false);
+    setError('');
   };
 
-  // Function to scroll back to the form
-  const handleRunAnother = () => {
-    const formElement = document.getElementById('infra-form');
-    if (formElement) {
-      formElement.scrollIntoView({ behavior: 'smooth' });
-      
-      // Clear the output after scrolling
-      setTimeout(() => {
-        setOutput("");
-      }, 300);
-    }
+  const saveToFile = () => {
+    const blob = new Blob([output], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'infrastructure-code.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Infrastructure Generation Form Component - This separates the form for better authentication control
+  const InfrastructureForm = () => {
+    return (
+      <div 
+        className="form-container"
+        onMouseEnter={() => setCursorFollowerActive(false)}
+        onMouseLeave={() => setCursorFollowerActive(true)}
+      >
+        <h2 className="form-title">Generate Infrastructure Code</h2>
+        <form onSubmit={handleGenerate} className="infra-form">
+          <div className="form-group">
+            <label htmlFor="prompt">
+              <span className="label-icon">📝</span>
+              Describe your infrastructure
+            </label>
+            <textarea
+              id="prompt"
+              name="prompt"
+              className="infra-input"
+              placeholder="Example: Create a VPC with public and private subnets, NAT Gateway, and security groups for a web application"
+              value={promptValue}
+              onChange={(e) => setPromptValue(e.target.value)}
+              maxLength={1000}
+              required
+            />
+            <div className="input-footer">
+              <div className="textarea-info">
+                Be specific about your requirements, including region, environment, and any specific configurations.
+              </div>
+              <div className="char-count">
+                {promptValue.length}/1000
+              </div>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="model">
+              <span className="label-icon">🤖</span>
+              Select AI Model
+            </label>
+            <div className="select-wrapper">
+              <select 
+                id="model" 
+                name="model" 
+                className="model-select"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                required
+              >
+                <option value="deepseek">DeepSeek AI (Best for Complex Infrastructure)</option>
+                <option value="gemini">Gemini AI (Fast & Reliable)</option>
+              </select>
+              <span className="select-arrow">▼</span>
+            </div>
+            <div className="model-info">
+              <div 
+                className={`model-badge ${selectedModel === 'deepseek' ? 'active' : ''}`} 
+                onClick={() => setSelectedModel('deepseek')}
+              >
+                <span className="model-icon">🧠</span>
+                <div className="model-details">
+                  <div className="model-name">DeepSeek AI</div>
+                  <div className="model-description">Optimized for complex infrastructure</div>
+                </div>
+              </div>
+              <div 
+                className={`model-badge ${selectedModel === 'gemini' ? 'active' : ''}`}
+                onClick={() => setSelectedModel('gemini')}
+              >
+                <span className="model-icon">💫</span>
+                <div className="model-details">
+                  <div className="model-name">Gemini AI</div>
+                  <div className="model-description">Fast and reliable for general use</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="submit-button"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="button-spinner"></span>
+                Generating...
+              </>
+            ) : (
+              <>
+                <span className="button-icon">⚡</span>
+                Generate Code
+              </>
+            )}
+          </button>
+        </form>
+      </div>
+    );
+  };
+
+  // Authentication Required View for Generation Section
+  const AuthRequiredView = () => {
+    return (
+      <div className="auth-required-container">
+        <div className="auth-required-content">
+          <h2>Authentication Required</h2>
+          <p>Please sign in or create an account to generate infrastructure code. Our AI-powered code generation is exclusively available to registered users.</p>
+          <div className="auth-required-buttons">
+            <AuthButtons />
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className={`app-container ${isVisible ? 'fade-in' : ''}`}>
-      {/* Cursor follower animation */}
-      <div className="cursor-follower" ref={cursorRef}></div>
-      
-      {/* Header */}
-      <header className={`header ${isScrolled ? 'header-scrolled' : ''} ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`}>
+    <div className="app-container">
+      {cursorFollowerActive && (
+        <div 
+          className="cursor-follower"
+          style={{
+            left: `${cursorPosition.x}px`,
+            top: `${cursorPosition.y}px`,
+          }}
+        />
+      )}
+
+      <header className={`header ${scrollPosition > 50 ? 'header-scrolled' : ''}`}>
         <div className="header-container">
-          <a href="#" className="logo">
+          <a href="/" className="logo">
             <span className="logo-icon">⚡</span>
-            <span>InfraGen AI</span>
+            InfraGen AI
           </a>
-          
-          {/* Desktop Navigation */}
           <nav className="nav-links">
-            {navLinks.map((link, index) => (
-              <a key={index} href={link.href} className="nav-link" onClick={() => setIsMobileMenuOpen(false)}>{link.text}</a>
+            {navigationLinks.map((link) => (
+              <a
+                key={link.name}
+                href={link.href}
+                className="nav-link"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                {link.name}
+              </a>
             ))}
+            <AuthButtons />
           </nav>
-          
-          <button className="mobile-nav-toggle" onClick={toggleMobileMenu} aria-label="Toggle menu">
+          <button className="mobile-nav-toggle" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <div className="hero">
-        <h1 className="hero-title">AI-Powered Infrastructure Generator</h1>
-        <p className="hero-subtitle">
-          Transform your infrastructure ideas into reality with advanced AI technology.
-          Generate cloud infrastructure code instantly with our powerful AI models.
-          Experience the future of infrastructure automation.
-        </p>
-        <a href="#infra-form" className="hero-button">Get Started</a>
-      </div>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/"
+          element={
+            <main>
+              <section className="hero">
+                <h1 className="hero-title">Generate Infrastructure Code with AI</h1>
+                <p className="hero-subtitle">
+                  Transform your infrastructure requirements into production-ready code using advanced AI models.
+                  Support for AWS, Azure, GCP, and more.
+                </p>
+                <button className="hero-button" onClick={() => {
+                  const formElement = document.getElementById('generate');
+                  if (formElement) {
+                    formElement.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}>
+                  Start Generating
+                </button>
+              </section>
 
-      {/* Features Section */}
-      <section id="features" className="features-section">
-        <h2 className="section-title">Why Choose InfraGen AI</h2>
-        <div className="features-grid">
-          <div className="feature-card">
-            <div className="feature-icon">🚀</div>
-            <h3 className="feature-title">Lightning Fast Generation</h3>
-            <p className="feature-description">
-              Generate complete infrastructure code in seconds using our advanced AI models.
-              No more manual configuration or complex setup required.
-            </p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon">🤖</div>
-            <h3 className="feature-title">Multiple AI Models</h3>
-            <p className="feature-description">
-              Choose between powerful AI models like DeepSeek and Gemini to generate
-              infrastructure code tailored to your specific needs.
-            </p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon">🛡️</div>
-            <h3 className="feature-title">Best Practices</h3>
-            <p className="feature-description">
-              Get production-ready infrastructure code that follows industry best practices
-              and security standards.
-            </p>
-          </div>
-        </div>
-      </section>
+              <section id="features" className="features-section">
+                <h2 className="section-title">Features</h2>
+                <div className="features-grid">
+                  <div className="feature-card">
+                    <div className="feature-icon">⚡</div>
+                    <h3 className="feature-title">AI-Powered Generation</h3>
+                    <p className="feature-description">
+                      Leverage advanced AI models to generate accurate and efficient infrastructure code.
+                    </p>
+                  </div>
+                  <div className="feature-card">
+                    <div className="feature-icon">🛡️</div>
+                    <h3 className="feature-title">Best Practices</h3>
+                    <p className="feature-description">
+                      Follow industry best practices and security standards in generated code.
+                    </p>
+                  </div>
+                  <div className="feature-card">
+                    <div className="feature-icon">🔄</div>
+                    <h3 className="feature-title">Multi-Cloud Support</h3>
+                    <p className="feature-description">
+                      Generate code for multiple cloud providers including AWS, Azure, and GCP.
+                    </p>
+                  </div>
+                </div>
+              </section>
 
-      {/* Infra Form Section */}
-      <section id="infra-form" className="infra-section">
-        <InfraForm onGenerate={handleGenerate} />
-      </section>
+              <section id="generate" className="infra-section">
+                {isLoaded ? (
+                  isAuthenticated ? (
+                    <InfrastructureForm />
+                  ) : (
+                    <AuthRequiredView />
+                  )
+                ) : (
+                  <div className="loading-container">
+                    <div className="spinner"></div>
+                    <p>Loading authentication...</p>
+                  </div>
+                )}
+              </section>
 
-      {/* Loading Animation */}
-      {loading && (
-        <div className="loading-container fade-in">
-          <div className="spinner"></div>
-          <p>Generating your infrastructure code...</p>
-        </div>
-      )}
+              {/* Only show output section for authenticated users */}
+              {output && isAuthenticated && (
+                <section className="output-section">
+                  <div className="output-container">
+                    <div className="output-header">
+                      <h3>Generated Infrastructure Code</h3>
+                      <button
+                        className={`copy-button ${copySuccess ? 'copy-success' : ''}`}
+                        onClick={copyToClipboard}
+                      >
+                        <span className="button-icon">
+                          {copySuccess ? '✓' : '📋'}
+                        </span>
+                        {copySuccess ? 'Copied!' : 'Copy Code'}
+                      </button>
+                    </div>
+                    <div className="output-content">
+                      <pre className="output-code">{output}</pre>
+                      <button className="floating-copy-button" onClick={copyToClipboard}>
+                        📋
+                      </button>
+                    </div>
+                    <div className="output-actions">
+                      <button className="action-button save-button" onClick={saveToFile}>
+                        <span className="button-icon">💾</span>
+                        Save to File
+                      </button>
+                      <button className="action-button run-another-button" onClick={resetForm}>
+                        <span className="button-icon">🔄</span>
+                        Generate Another
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              )}
 
-      {/* Error Message */}
-      {error && (
-        <div className="error-message fade-in" data-success="false">
-          {error}
-        </div>
-      )}
+              {/* Show errors to all users */}
+              {error && (
+                <div className="error-message" data-success="false">
+                  {error}
+                </div>
+              )}
 
-      {/* Success Message */}
-      {successMessage && (
-        <div className="error-message fade-in" data-success="true">
-          {successMessage}
-        </div>
-      )}
-
-      {/* Output Section */}
-      {output && !loading && (
-        <div className="output-container fade-in" ref={outputRef}>
-          <div className="output-header">
-            <h3>Generated Infrastructure Code</h3>
-            <button 
-              className={`copy-button ${copySuccess ? 'copy-success' : ''}`}
-              onClick={handleCopyCode}
-              title="Copy to clipboard"
-            >
-              <span className="button-icon">{copySuccess ? '✓' : '📋'}</span>
-              {copySuccess ? 'Copied!' : 'Copy Code'}
-            </button>
-          </div>
-          <div className="output-content">
-            <pre className="output-code">{output}</pre>
-          </div>
-          <div className="output-actions">
-            <button className="action-button save-button" onClick={handleSaveFile}>
-              <span className="button-icon">💾</span>
-              Save as File
-            </button>
-            <button className="action-button run-another-button" onClick={handleRunAnother}>
-              <span className="button-icon">🔄</span>
-              Run Another Query
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Footer */}
-      <footer className="footer">
-        <div className="footer-container">
-          <div className="footer-column">
-            <h4 className="footer-title">InfraGen AI</h4>
-            <p>
-              The future of infrastructure as code.
-              Transforming how teams deploy and manage cloud resources.
-            </p>
-            <div className="social-links">
-              <a href="#" className="social-link">📱</a>
-              <a href="#" className="social-link">💻</a>
-              <a href="#" className="social-link">📧</a>
-            </div>
-          </div>
-          
-          <div className="footer-column">
-            <h4 className="footer-title">Resources</h4>
-            <a href="#" className="footer-link">Documentation</a>
-            <a href="#" className="footer-link">API Reference</a>
-            <a href="#" className="footer-link">Examples</a>
-            <a href="#" className="footer-link">Tutorials</a>
-          </div>
-          
-          <div className="footer-column">
-            <h4 className="footer-title">Company</h4>
-            <a href="#" className="footer-link">About Us</a>
-            <a href="#" className="footer-link">Blog</a>
-            <a href="#" className="footer-link">Careers</a>
-            <a href="#" className="footer-link">Contact</a>
-          </div>
-          
-          <div className="footer-column">
-            <h4 className="footer-title">Legal</h4>
-            <a href="#" className="footer-link">Privacy Policy</a>
-            <a href="#" className="footer-link">Terms of Service</a>
-            <a href="#" className="footer-link">Cookie Policy</a>
-          </div>
-        </div>
-        
-        <div className="footer-bottom">
-          <p>&copy; {new Date().getFullYear()} InfraGen AI. All rights reserved.</p>
-        </div>
-      </footer>
+              {/* Only show success message to authenticated users */}
+              {success && isAuthenticated && (
+                <div className="error-message" data-success="true">
+                  Code generated successfully!
+                </div>
+              )}
+            </main>
+          }
+        />
+      </Routes>
     </div>
   );
-};
+}
 
-export default App;
+// Root App Component
+export default function App() {
+  return (
+    <Router>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </Router>
+  );
+}

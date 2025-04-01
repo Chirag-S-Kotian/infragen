@@ -43,13 +43,14 @@ const InfraForm = ({ onGenerate }) => {
             value={prompt}
             onChange={handlePromptChange}
             required
+            maxLength={1000}
             disabled={isSubmitting}
           />
           <div className="input-footer">
             <div className="textarea-info">
               Be as specific as possible with your requirements
             </div>
-            <div className="char-count">{charCount} characters</div>
+            <div className="char-count">{charCount}/1000</div>
           </div>
         </div>
 
