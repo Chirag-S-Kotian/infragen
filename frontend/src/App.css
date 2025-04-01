@@ -597,17 +597,39 @@ body {
   }
 }
 
-/* Error Message */
+/* Error and Success Messages */
 .error-message {
-  background: rgba(220, 38, 38, 0.1);
-  color: #ef4444;
   padding: 1.2rem;
   border-radius: 12px;
   margin: 1.5rem auto;
   max-width: 650px;
   text-align: center;
-  border: 1px solid rgba(239, 68, 68, 0.2);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.error-message:before {
+  content: '⚠️';
+  font-size: 1.2rem;
+}
+
+.error-message[data-success="true"] {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success-color);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.error-message[data-success="true"]:before {
+  content: '✅';
+}
+
+.error-message[data-success="false"] {
+  background: rgba(220, 38, 38, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.2);
 }
 
 /* Output Section */
@@ -620,6 +642,25 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  position: relative;
+}
+
+.output-container:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 20px rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.15);
+}
+
+.output-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+  z-index: 1;
 }
 
 .output-header {
@@ -629,6 +670,7 @@ body {
   padding: 1.5rem 2rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.2);
+  position: relative;
 }
 
 .output-header h3 {
@@ -655,11 +697,23 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  font-weight: 500;
 }
 
 .copy-button:hover {
   background: rgba(255, 255, 255, 0.15);
   transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.copy-button:active {
+  transform: translateY(0);
+}
+
+.copy-success {
+  background: rgba(34, 197, 94, 0.2) !important;
+  color: var(--success-color) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
 }
 
 .output-content {
@@ -668,6 +722,40 @@ body {
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--primary-color) rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.floating-copy-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(4px);
+  opacity: 0.6;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.floating-copy-button:hover {
+  opacity: 1;
+  transform: scale(1.1);
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--primary-color);
+}
+
+.output-content:hover .floating-copy-button {
+  opacity: 0.9;
 }
 
 .output-content::-webkit-scrollbar {
@@ -695,6 +783,8 @@ body {
   margin: 0;
   white-space: pre-wrap;
   border-radius: 0;
+  color: var(--text-primary);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.2);
 }
 
 .output-actions {
@@ -711,17 +801,51 @@ body {
   color: var(--text-primary);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  padding: 0.6rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.8rem 1.2rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
 }
 
 .action-button:hover {
   background: rgba(255, 255, 255, 0.15);
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.action-button:active {
+  transform: translateY(0);
+}
+
+.save-button {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+.save-button:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.run-another-button {
+  background: rgba(129, 140, 248, 0.1);
+  border-color: rgba(129, 140, 248, 0.2);
+}
+
+.run-another-button:hover {
+  background: rgba(129, 140, 248, 0.15);
+  border-color: rgba(129, 140, 248, 0.3);
+}
+
+.button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
 }
 
 /* Footer */

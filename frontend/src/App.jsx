@@ -10,6 +10,7 @@ const App = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(null);
   const cursorRef = useRef(null);
   const outputRef = useRef(null);
 
@@ -107,6 +108,7 @@ const App = () => {
       }, 2000);
     } catch (err) {
       console.error('Failed to copy text: ', err);
+      setError("Failed to copy text. Please try again.");
     }
   };
 
@@ -114,15 +116,26 @@ const App = () => {
   const handleSaveFile = () => {
     if (!output) return;
     
-    const blob = new Blob([output], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'infrastructure-code.tf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      const blob = new Blob([output], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'infrastructure-code.tf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      // Show temporary success message
+      setSuccessMessage("File saved successfully!");
+      setTimeout(() => {
+        setSuccessMessage(null);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to save file: ', err);
+      setError("Failed to save file. Please try again.");
+    }
   };
 
   // Function to scroll back to the form
@@ -130,6 +143,11 @@ const App = () => {
     const formElement = document.getElementById('infra-form');
     if (formElement) {
       formElement.scrollIntoView({ behavior: 'smooth' });
+      
+      // Clear the output after scrolling
+      setTimeout(() => {
+        setOutput("");
+      }, 300);
     }
   };
 
@@ -216,8 +234,15 @@ const App = () => {
 
       {/* Error Message */}
       {error && (
-        <div className="error-message fade-in">
+        <div className="error-message fade-in" data-success="false">
           {error}
+        </div>
+      )}
+
+      {/* Success Message */}
+      {successMessage && (
+        <div className="error-message fade-in" data-success="true">
+          {successMessage}
         </div>
       )}
 
@@ -227,22 +252,23 @@ const App = () => {
           <div className="output-header">
             <h3>Generated Infrastructure Code</h3>
             <button 
-              className="copy-button" 
+              className={`copy-button ${copySuccess ? 'copy-success' : ''}`}
               onClick={handleCopyCode}
               title="Copy to clipboard"
             >
-              {copySuccess ? '✓ Copied!' : '📋 Copy Code'}
+              <span className="button-icon">{copySuccess ? '✓' : '📋'}</span>
+              {copySuccess ? 'Copied!' : 'Copy Code'}
             </button>
           </div>
           <div className="output-content">
             <pre className="output-code">{output}</pre>
           </div>
           <div className="output-actions">
-            <button className="action-button" onClick={handleSaveFile}>
+            <button className="action-button save-button" onClick={handleSaveFile}>
               <span className="button-icon">💾</span>
               Save as File
             </button>
-            <button className="action-button" onClick={handleRunAnother}>
+            <button className="action-button run-another-button" onClick={handleRunAnother}>
               <span className="button-icon">🔄</span>
               Run Another Query
             </button>
