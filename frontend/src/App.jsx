@@ -13,6 +13,15 @@ const App = () => {
   const cursorRef = useRef(null);
   const outputRef = useRef(null);
 
+  // Define navigation links array to avoid duplication
+  const navLinks = [
+    { href: "#", text: "Home" },
+    { href: "#features", text: "Features" },
+    { href: "#infra-form", text: "Generate" },
+    { href: "#", text: "Docs" },
+    { href: "#", text: "Contact" }
+  ];
+
   useEffect(() => {
     // Add a small delay to trigger the fade-in animation
     const timer = setTimeout(() => {
@@ -101,39 +110,52 @@ const App = () => {
     }
   };
 
+  // Function to handle download of generated code
+  const handleSaveFile = () => {
+    if (!output) return;
+    
+    const blob = new Blob([output], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'infrastructure-code.tf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Function to scroll back to the form
+  const handleRunAnother = () => {
+    const formElement = document.getElementById('infra-form');
+    if (formElement) {
+      formElement.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className={`app-container ${isVisible ? 'fade-in' : ''}`}>
       {/* Cursor follower animation */}
       <div className="cursor-follower" ref={cursorRef}></div>
       
       {/* Header */}
-      <header className={`header ${isScrolled ? 'header-scrolled' : ''}`}>
+      <header className={`header ${isScrolled ? 'header-scrolled' : ''} ${isMobileMenuOpen ? 'mobile-menu-open' : ''}`}>
         <div className="header-container">
           <a href="#" className="logo">
             <span className="logo-icon">⚡</span>
             <span>InfraGen AI</span>
           </a>
           
+          {/* Desktop Navigation */}
           <nav className="nav-links">
-            <a href="#" className="nav-link">Home</a>
-            <a href="#features" className="nav-link">Features</a>
-            <a href="#infra-form" className="nav-link">Generate</a>
-            <a href="#" className="nav-link">Docs</a>
-            <a href="#" className="nav-link">Contact</a>
+            {navLinks.map((link, index) => (
+              <a key={index} href={link.href} className="nav-link" onClick={() => setIsMobileMenuOpen(false)}>{link.text}</a>
+            ))}
           </nav>
           
-          <button className="mobile-nav-toggle" onClick={toggleMobileMenu}>
+          <button className="mobile-nav-toggle" onClick={toggleMobileMenu} aria-label="Toggle menu">
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
-        </div>
-        
-        {/* Mobile Navigation */}
-        <div className={`mobile-nav-links ${isMobileMenuOpen ? 'active' : ''}`}>
-          <a href="#" className="nav-link" onClick={toggleMobileMenu}>Home</a>
-          <a href="#features" className="nav-link" onClick={toggleMobileMenu}>Features</a>
-          <a href="#infra-form" className="nav-link" onClick={toggleMobileMenu}>Generate</a>
-          <a href="#" className="nav-link" onClick={toggleMobileMenu}>Docs</a>
-          <a href="#" className="nav-link" onClick={toggleMobileMenu}>Contact</a>
         </div>
       </header>
 
@@ -216,11 +238,11 @@ const App = () => {
             <pre className="output-code">{output}</pre>
           </div>
           <div className="output-actions">
-            <button className="action-button">
+            <button className="action-button" onClick={handleSaveFile}>
               <span className="button-icon">💾</span>
               Save as File
             </button>
-            <button className="action-button">
+            <button className="action-button" onClick={handleRunAnother}>
               <span className="button-icon">🔄</span>
               Run Another Query
             </button>
